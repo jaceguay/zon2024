@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Zoneamento 2024</title>
+    <link rel="icon" type="image/png" href="images/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/png" href="images/favicon-16x16.png" sizes="16x16">
+    <link rel="icon" type="image/png" href="images/favicon-32x32.png" sizes="32x32">
+    <!-- leaflet -->
+    <script src="lib/leaflet/leaflet.js"></script>
+    <link href="lib/leaflet/leaflet.css" rel="stylesheet">
+    <!-- esri leaflet -->
+    <script src="lib/leaflet/esri-leaflet.js"></script>
+    <script src="lib/leaflet/esri-leaflet-vector.js"></script>
+    <!-- polyline measure -->
+    <script src="lib/polylinemeasure/Leaflet.PolylineMeasure.js"></script>
+    <link href="lib/polylinemeasure/Leaflet.PolylineMeasure.css" rel="stylesheet">
+    <style>
+        *,
+        *:before,
+        *:after {
+            box-sizing: border-box;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            /* Previne a barra de rolagem global */
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .barra-topo {
+            width: 100%;
+            height: 40px;
+            background-color: #333;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+        }
+
+        #logo {
+            color: white;
+            background: var(--base);
+            text-shadow: 1px 1px 2px black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-left: 30px;
+        }
+
+        .conteudo {
+            display: flex;
+            flex-wrap: wrap;
+            position: absolute;
+            top: 30px;
+            /* Altura da barra do topo */
+            bottom: 0;
+            /* Estende até a parte inferior da página */
+            left: 0;
+            right: 0;
+        }
+
+        .esquerda,
+        .direita {
+            overflow-y: auto;
+            /* Permite rolagem interna se necessário */
+        }
+
+        .esquerda {
+            background-color: #ddd;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .direita {
+            background-color: #bbb;
+            width: 300px;
+            flex-shrink: 0;
+            font-size: 14px;
+        }
+
+        #tabela {
+            max-height: calc(100vh - 40px);
+            /* Altura total da viewport menos a altura da barra do topo */
+            overflow-y: auto;
+            /* Permite a rolagem vertical se o conteúdo exceder o max-height */
+        }
+
+        #tabela table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+
+        #tabela th,
+        #tabela td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+
+        #tabela td:first-child {
+            background-color: #f2f2f2;
+        }
+
+        #tabela th {
+            background-color: #ddd;
+        }
+
+
+        @media (max-width: 600px) {
+            .conteudo {
+                flex-direction: column;
+            }
+
+            .esquerda,
+            .direita {
+                width: 100%;
+                flex-basis: 50%;
+                /* Define a base do tamanho para 50% */
+                max-height: 50%;
+                /* Evita ultrapassar 50% da altura disponível */
+            }
+        }
+
+        .leaflet-default-icon-path {
+            background-image: url(images/marker-icon.png);
+        }
+
+        .leaflet-control-layers-toggle {
+            background-image: url(images/layers.png);
+        }
+
+        .leaflet-retina .leaflet-control-layers-toggle {
+            background-image: url(images/layers-2x.png);
+        }
+
+        .leaflet-control-draw-measure {
+            background-image: url(images/measure-control.png);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="barra-topo">
+        <div id='logo'>
+            <img src="images/favicon-32x32.png" style="height:auto; width:auto; padding:3px;">
+            <span>Município de Itajaí </br> <b>Mapa Zoneamento 2024</b></span>
+        </div>
+    </div>
+    <div class="conteudo">
+        <div class="esquerda" id="mapa">
+        </div>
+        <div class="direita" id="tabela">
+            <br>
+            clique sobre uma zona para visualizar os parâmetros.
+        </div>
+    </div>
+
+    <script>
+        //#div do mapa
+        let mapa = new L.Map('mapa', {
+            zoom: 14,
+            minZoom: 12,
+            maxZoom: 19,
+            maxBounds: [
+                //south west
+                [-27.3000, -49.2300],
+                //north east
+                [-26.3285, -48.3200]
+            ],
+            center: new L.latLng([-26.9046, -48.6874]),
+            zoomControl: false,
+            preferCanvas: true,
+            tap: false
+        });
+
+        //Mapa base, Urbanismo
+        let tilesmu = L.esri.Vector.vectorTileLayer("7a110ef9198540068341e6908c6bf298", {
+            portalUrl: "https://arcgis.itajai.sc.gov.br/portal",
+            attribution: 'Prefeitura de Itajaí'
+        }).addTo(mapa);
+
+        //Mapa ortoimagem 2020
+        let ortoimg2020 = new L.TileLayer(
+            'https://arcgis.itajai.sc.gov.br/geoitajai/plantacadastral/tiles/tiles_ortoimg_2020/{z}/{x}/{y}.png', {
+            minZoom: 10,
+            maxZoom: 19,
+            opacity: 0.9,
+            attribution: 'Engemap geoinformação 2020, Prefeitura de Itajaí'
+        });
+
+        //Mapa restituicao 2020
+        let restituicao2020 = new L.TileLayer(
+            'https://arcgis.itajai.sc.gov.br/geoitajai/plantacadastral/tiles/tiles_rest_2020/{z}/{x}/{y}.png', {
+            minZoom: 10,
+            maxZoom: 19,
+            opacity: 0.9,
+            attribution: 'Engemap geoinformação 2020, Prefeitura de Itajaí'
+        });
+
+        //Mapa base, ESRI
+        let tileesri = new L.TileLayer(
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            minZoom: 12,
+            maxZoom: 19,
+            opacity: 0.6,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        //Controle de camadas
+        let baseMaps = {
+            "SIE.Itajaí": tilesmu,
+            "Imag.2020": ortoimg2020,
+            "Rest.2020": restituicao2020,
+            "Satélite": tileesri
+        };
+
+        L.control.layers(baseMaps, null, {
+            collapsed: false,
+            position: 'bottomright'
+        }).addTo(mapa);
+
+        //barra escala
+        L.control.scale({
+            position: "bottomright",
+            imperial: false
+        }).addTo(mapa);
+
+        //Norte
+        let nortemapa = L.control({
+            position: 'bottomright'
+        });
+        nortemapa.onAdd = (map) => {
+            let div = L.DomUtil.create('div', 'info2 legend');
+            div.innerHTML +=
+                '<center><sub><font size="4">▲</font></sub><br/>' +
+                '<sup><font size="2">N</font></sup></center>'
+            return div;
+        };
+        nortemapa.addTo(mapa);
+
+        //Botão zoom posicionado
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(mapa);
+
+        //medidas
+        let polylineMeasure = L.control.polylineMeasure({
+            position: 'topright',
+            unit: 'kilometres',
+            useSubunits: true,
+            showBearings: false,
+            clearMeasurementsOnStop: true,
+            showClearControl: false,
+            tooltipTextFinish: 'clique para <b>finalizar</b><br>',
+            tooltipTextDelete: 'aperte SHIFT e clique para <b>apagar ponto</b>',
+            tooltipTextMove: 'clique e arraste para <b>mover ponto</b><br>',
+            tooltipTextResume: '<br>aperte CTRL e clique para <b>retomar linha</b>',
+            tooltipTextAdd: 'aperte CTRL e clique para <b>adicionar ponto</b>',
+            measureControlTitleOn: 'ligar medidas de distâncias',
+            clearControlTitle: 'limpar medidas',
+            measureControlTitleOff: 'Desligar medidas'
+        });
+
+        polylineMeasure.addTo(mapa);
+
+        let medidaDistanciaAtivada = false;
+
+        //desativa interação para começar a medir
+        function ativarMedidasDistancia() {
+            camadaZoneamento.eachLayer(function (layer) {
+                layer.off();
+            });
+            iniciarMedida = true;
+        };
+
+        //ativa interação ao fim
+        function desativarMedidasDistancia() {
+            camadaZoneamento.eachLayer(function (layer) {
+                layer.on({
+                    click: function (e) {
+                        //camada destaque
+                        camadaDestaque.clearLayers();
+                        var layerDestaque = L.geoJson(layer.feature, { style: estiloDestaque });
+                        camadaDestaque.addLayer(layerDestaque);
+
+                        const props = e.target.feature.properties;
+                        atualizarTabelaComDadosGeoJSON(props);
+                    }
+                });
+            });
+            iniciarMedida = false;
+        };
+
+        const medidaDistanciaControl = document.getElementById('polyline-measure-control');
+
+        medidaDistanciaControl.addEventListener('click', function () {
+            if (medidaDistanciaAtivada) {
+                desativarMedidasDistancia();
+            } else {
+                ativarMedidasDistancia();
+            }
+            medidaDistanciaAtivada = !medidaDistanciaAtivada;
+        });
+
+        //Dados tabela
+        async function carregarDadosTSVComoJSON(url) {
+            const resposta = await fetch(url);
+            const texto = await resposta.text();
+
+            const linhas = texto.trim().split('\n');
+            const cabecalho = linhas.shift().split('\t');
+            const dados = linhas.map(linha => {
+                const valores = linha.split('\t').map(valor =>
+                    valor.replace(/^"|"$/g, '').replace(/\r$/, '').trim()); // Remove aspas no início/fim e \r no final
+                return cabecalho.reduce((objeto, chave, indice) => {
+                    objeto[chave.trim()] = valores[indice]; // Também remove espaços em branco do início/fim das chaves
+                    return objeto;
+                }, {});
+            });
+
+            // Transforma a lista de objetos em um objeto com 'nome' como chave
+            const dadosComNomeComoChave = dados.reduce((objeto, itemAtual) => {
+                const chave = itemAtual.nome;
+                objeto[chave] = itemAtual;
+                return objeto;
+            }, {});
+
+            return dadosComNomeComoChave;
+        };
+
+        const urlTSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTTWEytUcJLMUdg8MwgaDsD14ydxFTd9MlmDm6L4SrMf0301AYZFgZdPZM0MAKum1_5OzqzP09j88id/pub?gid=0&single=true&output=tsv";
+
+        //Destaque
+        var camadaDestaque = L.layerGroup().addTo(mapa);
+
+        // Função para aplicar estilo de destaque
+        function estiloDestaque(feature) {
+            return {
+                color: 'black', // Cor da borda
+                weight: 2, // Largura da borda
+                fillOpacity: 0, // Transparência do preenchimento
+                interactive: false // Desativa interação com o elemento
+            };
+        }
+
+        //Camada Zoneamento
+        const coresZon = {
+            "Polígono Manancial": "#4da283",
+            "ZBN2": "#84add2",
+            "ZBP": "#d6b462",
+            "ZBR": "#6ed3ba",
+            "ZBR(centro histórico)": "#6ed3ba",
+            "ZBS1": "#e1bfe3",
+            "ZBS2": "#dd89e3",
+            "ZBS3": "#ca56d5",
+            "ZBS4": "#834274",
+            "ZBS5": "#f5ac81",
+            "ZBS6": "#f58e53",
+            "ZCA1": "#9dc6e7",
+            "ZCA2": "#6f95b6",
+            "ZCA3": "#5e758a",
+            "ZDR": "#dedede",
+            "ZDR(ambiental)": "#cccccc",
+            "ZMC1": "#634360",
+            "ZMC1(centro histórico)": "#634360",
+            "ZMC2": "#ae4142",
+            "ZMC3": "#f54346",
+            "ZMR1": "#f58743",
+            "Zona Especial Portuária": "#294cd8",
+            "ZPA": "#96be90",
+            "ZPA(parque)": "#708e6b",
+            "ZPL": "#a5f544",
+            "ZRI": "#69809f",
+            "ZRI(ambiental)": "#5c708b",
+            "ZRP1": "#f5f27e",
+            "ZRP1(ambiental)": "#e6e276",
+            "ZRP2": "#d1ca98",
+            "ZRP2(ambiental)": "#c1ba8c",
+            "ZTP": "#436eda",
+            "ZTU1": "#f1ddcc",
+            "ZTU2": "#c9af97",
+            "ZTU3": "#998664",
+            "ZTU4": "#735042",
+            "ZTU4(ambiental)": "#644539",
+            "ZVP": "#4aeef1",
+            "ZBN1": "#c8d0e0"
+        };
+
+        function estilo(feature) {
+            return {
+                fillColor: coresZon[feature.properties.descr],
+                weight: 0.5, // Sem linha de contorno
+                opacity: 1,
+                color: 'white', // Cor da linha, não será vista devido ao weight 0
+                fillOpacity: 0.5
+            };
+        };
+
+        function atualizarTabelaComDadosGeoJSON(props) {
+            const tabelaHtml = `</br>
+                <table><tr>
+                <th>Parâmetro</th><th>Valor</th></tr>
+                <tr><td><strong style="font-size: larger;">Nome da Zona</strong></td><td><strong style="font-size: larger;">${props.descr}</strong></td></tr>
+                <tr><td>Altura Máxima*8</td><td>${props.altura_max || ' '}</td></tr>
+                <tr><td>Altura do Embasamento*3</td><td>${props.altura_emb || ' '}</td></tr>
+                <tr><td>Coeficiente de Aproveitamento Total</td><td>${props.ca_total || ' '}</td></tr>
+                <tr><td>Coeficiente de Aproveitamento Básico</td><td>${props.ca_basico || ' '}</td></tr>
+                <tr><td>Outorga Onerosa</td><td>${props.outorga_on || ' '}</td></tr>
+                <tr><td>Fator de Contribuição</td><td>${props.fator_contr || ' '}</td></tr>
+                <tr><td>Transferência de Índice</td><td>${props.transf_ind || ' '}</td></tr>
+                <tr><td>Taxa de Ocupação da Base</td><td>${props.to_base || ' '}</td></tr>
+                <tr><td>Taxa de Ocupação da Torre</td><td>${props.to_torre || ' '}</td></tr>
+                <tr><td>Taxa de Permeabilidade*4</td><td>${props.permeab || ' '}</td></tr>
+                <tr><td>Recuo Frontal da Torre*9</td><td>${props.recuo_f_torre || ' '}</td></tr>
+                <tr><td>Recuo Lateral e Fundos da Torre</td><td>${props.recuo_l_f_torre || ' '}</td></tr>
+                <tr><td>Recuo do Embasamento*9</td><td>${props.recuo_emb || ' '}</td></tr>
+                <tr><td>Lote Mínimo</td><td>${props.lote_min || ' '}</td></tr>
+                <tr><td>Profundidade Mínima</td><td>${props.prof_min || ' '}</td></tr>
+                <tr><td>Testada Mínima</td><td>${props.test_min || ' '}</td></tr>
+                <tr><td>Usos a ser regulamentado pela IN da SEDUH</td><td>${props.usos || ' '}</td></tr>
+                </table>
+                </br>
+                <ol>
+                <li>Nas Zonas que não sofrem interferência da Zona de Proteção do Aeroporto de Navegantes, a altura máxima das edificações prevista no Anexo II poderá ser ultrapassada desde que respeitados os demais parâmetros urbanísticos, inclusive o cone de sombreamento da Praia Brava.</li>
+                <li>Conforme o Artigo 82 paragrafo 3 do plano diretor.</li>
+                <li>Conforme o artigo 124 do plano diretor.</li>
+                <li>Em caso de utilização da permeabilidade induzida deverá ser considerado uma acréscimo de 20% sobre a taxa indicada na tabela.</li>
+                <li>Nas ZBS3 e ZBS4, os asteriscos associados às maiores alturas máximas referem-se a empreendimentos em terrenos maiores de 3000 m².</li>
+                <li>Nas ZBS5, ZBS6 e ZBP os asteriscos associados às maiores alturas máximas referem-se a empreendimentos alvo de transferências de índice.</li>
+                <li>Nas ZBS´s 1,2,3,4,5 e 6 só são admitidos os usos de outorga em terrenos acima de 900m².</li>
+                <li>Ao norte da Av. Adolfo Konder, Heitor Liberato e Rua Silva a Altura Máxima é de 55m, devido ao cone de aproximação do aeroporto, salvo casos com autorização do COMAER.</li>
+                <li>Os recuos frontais dos embasamentos e torres são contabilizados a partir do meio fio.</li>
+                <li>Somente poderão utilizar os parâmetros urbanísticos de ZCA 3 os empreendimentos que estiverem voltados para ruas com CAIXAS DE VIA igual ou maior a 9 metros. Do contrário, prevalecem os parâmetros de ZCA 2.</li>
+                <li>Nas ZDR´S os parcelamentos deverão respeitar a legislação federal do módulo Rural, caso elas sejam transformadas em ZTP, ele passará a ser regida pelos Parâmetros da ZTP.</li>
+                </ol>
+            `;
+
+            // Substitui o conteúdo do div 'tabela' pelo HTML da tabela
+            document.getElementById('tabela').innerHTML = tabelaHtml;
+        }
+
+        carregarDadosTSVComoJSON(urlTSV).then(dadosPlanilha => {
+            // Agora carregamos o GeoJSON
+            fetch('data/zon2024.geojson')
+                .then(response => response.json())
+                .then(geojson => {
+                    camadaZoneamento = L.geoJson(geojson, {
+                        style: estilo,
+                        onEachFeature: function (feature, layer) {
+                            const parteDescr = feature.properties.descr.split('(')[0].trim();
+                            const dadosCorrespondentes = dadosPlanilha[parteDescr];
+                            if (dadosCorrespondentes) {
+                                // Expande as propriedades da feição com os dados da planilha
+                                Object.keys(dadosCorrespondentes).forEach(chave => {
+                                    // Se o valor correspondente não for undefined, atribui o valor; caso contrário, atribui ' '
+                                    feature.properties[chave] = dadosCorrespondentes[chave] !== undefined ? dadosCorrespondentes[chave] : ' ';
+                                });
+                            } else {
+                                // Se não encontrar dados correspondentes, preenche todas as chaves desejadas com ' '
+                                const chavesDesejadas = ['nome', 'altura_max', 'altura_emb', 'ca_total', 'ca_basico', 'outorga_on', 'fator_contr', 'transf_ind', 'to_base', 'to_torre', 'permeab', 'recuo_f_torre', 'recuo_l_f_torre', 'recuo_emb', 'lote_min', 'prof_min', 'test_min', 'usos']; // Adicione mais chaves conforme necessário
+                                chavesDesejadas.forEach(chave => {
+                                    feature.properties[chave] = ' ';
+                                });
+                            }
+
+                            //layer.bindPopup(feature.properties.descr);
+
+                            layer.on('click', function () {
+                                // Adiciona o elemento clicado à camada de destaque
+                                camadaDestaque.clearLayers();
+                                var layerDestaque = L.geoJson(feature, { style: estiloDestaque });
+                                camadaDestaque.addLayer(layerDestaque);
+
+                                const props = feature.properties;
+                                atualizarTabelaComDadosGeoJSON(props);
+                            });
+                        }
+                    }).addTo(mapa);
+                });
+        });
+    </script>
+
+</body>
+
+</html>
