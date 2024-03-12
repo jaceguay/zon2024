@@ -218,6 +218,18 @@
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         });
 
+        let malhacadastral = L.esri.dynamicMapLayer({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/malha_cadastral_raster/MapServer/',
+            //pane: 'nivel_basemap',
+            minZoom: 15,
+            maxZoom: 19,
+            opacity: 0.40,
+            f: 'image',
+            disableCache: false,
+            format: 'png8',
+            //useCors: false
+        }).addTo(mapa);
+        
         //Controle de camadas
         let baseMaps = {
             "SIE.Itajaí": tilesmu,
