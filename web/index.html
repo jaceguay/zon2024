@@ -17,11 +17,22 @@
     <!-- polyline measure -->
     <script src="lib/polylinemeasure/Leaflet.PolylineMeasure.js"></script>
     <link href="lib/polylinemeasure/Leaflet.PolylineMeasure.css" rel="stylesheet">
+    <!-- jQuery -->
+    <script src="lib/jquery/jquery-3.7.1.min.js"></script>
+    <script src="lib/jquery/jquery-ui.min.js"></script>
+    <link href="lib/jquery/jquery-ui.min.css" rel="stylesheet">
+    <link href="lib/jquery/jquery-ui.theme.min.css" rel="stylesheet">
     <style>
         *,
         *:before,
         *:after {
             box-sizing: border-box;
+        }
+
+        :root {
+            --base: #00bcd4;
+            --escuro: #333;
+            --claro: #e9e9e9;
         }
 
         body,
@@ -38,9 +49,13 @@
         }
 
         .barra-topo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             width: 100%;
             height: 40px;
-            background-color: #333;
+            background-color: var(--base);
+            color: #fff;
             position: fixed;
             top: 0;
             left: 0;
@@ -76,13 +91,13 @@
         }
 
         .esquerda {
-            background-color: #ddd;
+            background: var(--claro);
             flex-grow: 1;
             overflow: hidden;
         }
 
         .direita {
-            background-color: #bbb;
+            background: var(--claro);
             width: 300px;
             flex-shrink: 0;
             font-size: 14px;
@@ -98,7 +113,7 @@
         #tabela table {
             width: 100%;
             border-collapse: collapse;
-            background-color: white;
+            background: var(--claro);
         }
 
         #tabela th,
@@ -147,6 +162,74 @@
         .leaflet-control-draw-measure {
             background-image: url(images/measure-control.png);
         }
+
+        /* Estilos para a caixa de pesquisa */
+        .search-box {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            background-color: #fff;
+            border: 0px solid #e9e9e9;
+            border-radius: 0px;
+            padding: 6px;
+            width: 315px;
+            position: absolute;
+            right: 0;
+        }
+
+        .search-box input[type="text"] {
+            border: none;
+            width: 100%;
+        }
+
+        #util {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+        }
+
+        /* lista autocompletar */
+        .ui-autocomplete {
+            height: 290px;
+            max-height: 600px;
+            overflow-y: scroll;
+            overflow-x: hidden;
+        }
+
+        ul.ui-autocomplete {
+            z-index: 402;
+        }
+
+        .ui-accordion {
+            overflow-x: hidden;
+            overflow-y: scroll;
+        }
+
+        .ui-state-active,
+        .ui-widget,
+        .ui-widget-content .ui-state-active,
+        .ui-widget-header .ui-state-active,
+        .ui-button,
+        .ui-button:active,
+        .ui-state-active,
+        .ui-state-active,
+        .ui-state-hover,
+        .ui-state-visited,
+        .ui-state-focus,
+        .ui-accordion-header,
+        .ui-accordion-header-active {
+            border: none;
+        }
+
+        .ui-accordion .ui-accordion-header {
+            display: block;
+            cursor: pointer;
+            position: relative;
+            margin: 2px 0 0 0;
+            padding: .5em .5em .5em .7em;
+            font-size: 12px;
+        }
     </style>
 </head>
 
@@ -156,6 +239,12 @@
         <div id='logo'>
             <img src="images/favicon-32x32.png" style="height:auto; width:auto; padding:3px;">
             <span>Município de Itajaí </br> <b>Mapa Zoneamento 2024</b></span>
+        </div>
+        <div class="search-box" id='util'>
+            <form>
+                <input id="pesquisaRapida" placeholder="pesquisa: endereço,nº - código - inscr.imobiliária" type="text"
+                    spellcheck="false" style="border: none; width: 320px; background-color: white;">
+            </form>
         </div>
     </div>
     <div class="conteudo">
@@ -169,7 +258,7 @@
 
     <script>
         //#div do mapa
-        let mapa = new L.Map('mapa', {
+        let mapa = new L.map('mapa', {
             zoom: 14,
             minZoom: 12,
             maxZoom: 19,
@@ -218,6 +307,7 @@
             attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
         });
 
+        //Mapa malha cadastral
         let malhacadastral = L.esri.dynamicMapLayer({
             url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/malha_cadastral_raster/MapServer/',
             //pane: 'nivel_basemap',
@@ -229,7 +319,7 @@
             format: 'png8',
             //useCors: false
         }).addTo(mapa);
-        
+
         //Controle de camadas
         let baseMaps = {
             "SIE.Itajaí": tilesmu,
@@ -326,6 +416,224 @@
             medidaDistanciaAtivada = !medidaDistanciaAtivada;
         });
 
+
+        let viasgeom = L.esri.featureLayer({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/sistema_viario/FeatureServer/0/',
+            fields: ['nome', 'codsecao', 'cod', 'objectid'],
+            minZoom: 17,
+            precision: 6,
+        });
+
+        //Pesquisa Lotes
+        let plantaCadastralDestaque = L.featureGroup({ pane: 'basemap_overlay' }).addTo(mapa);
+
+        // Dados, imóveis
+        let cadastroimoveispts = L.esri.query({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/Hosted/imoveis_plantacadastral/FeatureServer/0/'
+        });
+        let cadastroimoveisptscodimov = L.esri.query({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/Hosted/imoveis_plantacadastral/FeatureServer/0/'
+        });
+
+        //Destacar lotes
+        function pCestiloDestaque(e) {
+            mapa.closePopup();
+            plantaCadastralDestaque.clearLayers();
+            //lote no mapa
+            L.geoJson(e, {
+                style: {
+                    weight: 5,
+                    color: '##333',
+                    dashArray: '',
+                    fillOpacity: 0
+                }
+            }).addTo(plantaCadastralDestaque);
+            mapa.flyToBounds(plantaCadastralDestaque.getBounds(), {
+                maxZoom: 20
+            });
+        };
+
+        //Zoom e destaque para via a partir de geoJSON
+        function destaquevia(g) {
+            pesquisaQvias.clearLayers();
+            mapa.closePopup();
+            viasgeom.query()
+                .where(`nome = '${g}'`)
+                .run((error, viaspesquisageom) => {
+                    L.geoJson(viaspesquisageom, {
+                        style: (feature) => {
+                            return {
+                                weight: 5,
+                                color: "#ffff00",
+                                dashArray: "30 10",
+                                opacity: 0.6,
+                                interactive: false
+                            };
+                        }
+                    }).addTo(pesquisaQvias);
+                    mapa.flyToBounds(pesquisaQvias.getBounds(), {
+                        maxZoom: 19
+                    });
+                    $("#pesquisaRapida").val('');
+                });
+        };
+
+        //Barra de pesquisa
+        //tabela substituições
+        let accentMap = {
+            'á': 'a',
+            'à': 'a',
+            'ã': 'a',
+            'â': 'a',
+            'ç': 'c',
+            'é': 'e',
+            'è': 'e',
+            'í': 'i',
+            'ì': 'i',
+            'ó': 'o',
+            'ò': 'o',
+            'õ': 'o',
+            'ô': 'o',
+            'ú': 'u',
+            'ù': 'u'
+        };
+
+        //substituição de caracteres especiais
+        let normalize = (term) => {
+            let ret = "";
+            for (let i = 0; i < term.length; i++) {
+                ret += accentMap[term.charAt(i)] || term.charAt(i);
+            }
+            return ret;
+        };
+
+        //função de pesquisa
+        let pesquisaQvias = L.featureGroup().addTo(mapa);
+        let viaspesquisa = L.esri.query({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/sistema_viario/FeatureServer/0/'
+        });
+
+        //caixa de pesquisa
+        $('document').ready(function () {
+            let itensPesquisa = [];
+            let itensPesquisaCompletos = {};
+            viaspesquisa.fields(['nome'])
+                .returnGeometry(false)
+                .distinct()
+                .run((error, psqvias) => {
+                    let itenspesquisa = psqvias.features.map((feicoes) => {
+                        return feicoes.properties.nome
+                    }).sort();
+                    itensarquivo = itenspesquisa;
+                    $(() => {
+                        let pesquisaval;
+                        $('#pesquisaRapida').autocomplete({
+                            delay: 200,
+                            minLength: 3,
+                            autoFocus: true,
+                            source: (request, response) => {
+                                let matcher = new RegExp($.ui.autocomplete.escapeRegex(request
+                                    .term), 'i');
+                                response($.grep(itenspesquisa, (value) => {
+                                    value = value.label || value.value || value;
+                                    return matcher.test(value) || matcher.test(
+                                        normalize(value));
+                                }));
+                            },
+                            select: (event, ui) => {
+                                if ($('#pesquisaRapida').val().includes(',') == true) {
+                                    malhacadastralpesquisa.query()
+                                        .where(`inscricao = '${itensPesquisaCompletos[pesquisaval]}'`)
+                                        .run((error, fcolinscr) => {
+                                            if (fcolinscr.features.length == 0) {
+                                                alert("Não encontrado");
+                                            } else {
+                                                zoomresultado = true;
+                                                pCestiloDestaque(fcolinscr);
+                                                $("#pesquisaRapida").val('');
+                                                itenspesquisa = itensarquivo;
+                                            };
+                                        });
+                                } else {
+                                    destaquevia(ui.item.value);
+                                };
+                            },
+                            focus: (event, ui) => {
+                                pesquisaval = ui.item.value;
+                            },
+                            response: (event, ui) => {
+                                if ($('#pesquisaRapida').val().includes(',') == false) {
+                                    itenspesquisa = itensarquivo;
+                                };
+                            }
+                        }).keypress((event, ui) => {
+                            if (event.keyCode == 13) {
+                                event.preventDefault();
+                                if ($("#pesquisaRapida").val().length === 15) {
+                                    let inscrlig = `i${$("#pesquisaRapida").val().substr(0, 3)}${$("#pesquisaRapida").val().substr(4, 3)}${$("#pesquisaRapida").val().substr(8, 2)}${$("#pesquisaRapida").val().substr(11, 4)}`
+                                    malhacadastralpesquisa.query()
+                                        .where(`inscrlig = '${inscrlig}'`)
+                                        .run((error, fcolinscr) => {
+                                            if (fcolinscr.features.length == 0) {
+                                                alert("Não encontrado");
+                                            } else {
+                                                zoomresultado = true;
+                                                pCestiloDestaque(fcolinscr);
+                                                $("#pesquisaRapida").val('');
+                                            };
+                                        });
+                                } else {
+                                    cadastroimoveisptscodimov.where(`aut_codigo_imovel='${$("#pesquisaRapida").val()}'`)
+                                        .returnGeometry(false)
+                                        .limit(1)
+                                        .fields(['inscrlig']).run((error, fcolcod) => {
+                                            if (fcolcod == null) {
+                                                alert("Não encontrado");
+                                            } else if (fcolcod.features.length == 0) {
+                                                alert("Não encontrado");
+                                            } else {
+                                                malhacadastralpesquisa.query()
+                                                    .where(`inscrlig = '${fcolcod.features[0].properties.inscrlig}'`)
+                                                    .run((error, fcolcodinscr) => {
+                                                        zoomresultado = true;
+                                                        pCestiloDestaque(fcolcodinscr)
+                                                        $("#pesquisaRapida").val('');
+                                                    });
+                                            };
+                                        });
+                                };
+                            };
+                            if (event.keyCode == 44 && $('#pesquisaRapida').val().includes(',') == false) {
+                                event.preventDefault();
+                                malhacadastralpesquisa.query()
+                                    .fields(['nomevia', 'numero', 'inscricao'])
+                                    .where(`nomevia ='${pesquisaval}'`)
+                                    .distinct()
+                                    .run((error, psqvias) => {
+                                        psqvias.features.map(e => {
+                                            if (e.properties.numero != null) {
+                                                let enderecomont = `${pesquisaval},${e.properties.numero}`;
+                                                itensPesquisaCompletos[enderecomont] = e.properties.inscricao;
+                                                itensPesquisa.push(enderecomont);
+                                            };
+                                        });
+                                        itenspesquisa = itensPesquisa;
+                                    });
+                                $('#pesquisaRapida').val(`${pesquisaval},`);
+                                $('#pesquisaRapida').autocomplete('search', `${pesquisaval},`);
+                            };
+                        });
+                    });
+                });
+            $("#pesquisaRapida").click(() => {
+                $(this).select();
+            });
+        });
+
+        let malhacadastralpesquisa = new L.esri.featureLayer({
+            url: 'https://arcgis.itajai.sc.gov.br/server/rest/services/malha_cadastral_raster/FeatureServer/0/'
+        });
+
         //Dados tabela
         async function carregarDadosTSVComoJSON(url) {
             const resposta = await fetch(url);
@@ -373,7 +681,6 @@
             "ZBN2": "#84add2",
             "ZBP": "#d6b462",
             "ZBR": "#6ed3ba",
-            "ZBR(centro histórico)": "#6ed3ba",
             "ZBS1": "#e1bfe3",
             "ZBS2": "#dd89e3",
             "ZBS3": "#ca56d5",
@@ -386,11 +693,10 @@
             "ZDR": "#dedede",
             "ZDR(ambiental)": "#cccccc",
             "ZMC1": "#634360",
-            "ZMC1(centro histórico)": "#634360",
             "ZMC2": "#ae4142",
             "ZMC3": "#f54346",
             "ZMR1": "#f58743",
-            "Zona Especial Portuária": "#294cd8",
+            "ZP": "#2bcbdd",
             "ZPA": "#96be90",
             "ZPA(parque)": "#708e6b",
             "ZPL": "#a5f544",
@@ -425,7 +731,7 @@
                 <table><tr>
                 <th>Parâmetro</th><th>Valor</th></tr>
                 <tr><td><strong style="font-size: larger;">Nome da Zona</strong></td><td><strong style="font-size: larger;">${props.descr}</strong></td></tr>
-                <tr><td>Altura Máxima*8</td><td>${props.altura_max || ' '}</td></tr>
+                <tr><td>Altura Máxima*7</td><td>${props.altura_max || ' '}</td></tr>
                 <tr><td>Altura do Embasamento*3</td><td>${props.altura_emb || ' '}</td></tr>
                 <tr><td>Coeficiente de Aproveitamento Total</td><td>${props.ca_total || ' '}</td></tr>
                 <tr><td>Coeficiente de Aproveitamento Básico</td><td>${props.ca_basico || ' '}</td></tr>
@@ -435,9 +741,9 @@
                 <tr><td>Taxa de Ocupação da Base</td><td>${props.to_base || ' '}</td></tr>
                 <tr><td>Taxa de Ocupação da Torre</td><td>${props.to_torre || ' '}</td></tr>
                 <tr><td>Taxa de Permeabilidade*4</td><td>${props.permeab || ' '}</td></tr>
-                <tr><td>Recuo Frontal da Torre*9</td><td>${props.recuo_f_torre || ' '}</td></tr>
+                <tr><td>Recuo Frontal da Torre*8</td><td>${props.recuo_f_torre || ' '}</td></tr>
                 <tr><td>Recuo Lateral e Fundos da Torre</td><td>${props.recuo_l_f_torre || ' '}</td></tr>
-                <tr><td>Recuo do Embasamento*9</td><td>${props.recuo_emb || ' '}</td></tr>
+                <tr><td>Recuo do Embasamento*8</td><td>${props.recuo_emb || ' '}</td></tr>
                 <tr><td>Lote Mínimo</td><td>${props.lote_min || ' '}</td></tr>
                 <tr><td>Profundidade Mínima</td><td>${props.prof_min || ' '}</td></tr>
                 <tr><td>Testada Mínima</td><td>${props.test_min || ' '}</td></tr>
@@ -447,14 +753,13 @@
                 <ol>
                 <li>Nas Zonas que não sofrem interferência da Zona de Proteção do Aeroporto de Navegantes, a altura máxima das edificações prevista no Anexo II poderá ser ultrapassada desde que respeitados os demais parâmetros urbanísticos, inclusive o cone de sombreamento da Praia Brava.</li>
                 <li>Conforme o Artigo 82 paragrafo 3 do plano diretor.</li>
-                <li>Conforme o artigo 124 do plano diretor.</li>
+                <li>Conforme o artigo 125 do plano diretor.</li>
                 <li>Em caso de utilização da permeabilidade induzida deverá ser considerado uma acréscimo de 20% sobre a taxa indicada na tabela.</li>
                 <li>Nas ZBS3 e ZBS4, os asteriscos associados às maiores alturas máximas referem-se a empreendimentos em terrenos maiores de 3000 m².</li>
                 <li>Nas ZBS5, ZBS6 e ZBP os asteriscos associados às maiores alturas máximas referem-se a empreendimentos alvo de transferências de índice.</li>
-                <li>Nas ZBS´s 1,2,3,4,5 e 6 só são admitidos os usos de outorga em terrenos acima de 900m².</li>
                 <li>Ao norte da Av. Adolfo Konder, Heitor Liberato e Rua Silva a Altura Máxima é de 55m, devido ao cone de aproximação do aeroporto, salvo casos com autorização do COMAER.</li>
                 <li>Os recuos frontais dos embasamentos e torres são contabilizados a partir do meio fio.</li>
-                <li>Somente poderão utilizar os parâmetros urbanísticos de ZCA 3 os empreendimentos que estiverem voltados para ruas com CAIXAS DE VIA igual ou maior a 9 metros. Do contrário, prevalecem os parâmetros de ZCA 2.</li>
+                <li>Somente poderão utilizar os parâmetros urbanísticos de ZCA 3 os empreendimentos que estiverem voltados para ruas com CAIXAS DE VIA igual ou maior a 8 metros. Do contrário, prevalecem os parâmetros de ZCA 2.</li>
                 <li>Nas ZDR´S os parcelamentos deverão respeitar a legislação federal do módulo Rural, caso elas sejam transformadas em ZTP, ele passará a ser regida pelos Parâmetros da ZTP.</li>
                 </ol>
             `;
@@ -469,6 +774,8 @@
                 .then(response => response.json())
                 .then(geojson => {
                     camadaZoneamento = L.geoJson(geojson, {
+
+                        //estilo
                         style: estilo,
                         onEachFeature: function (feature, layer) {
                             const parteDescr = feature.properties.descr.split('(')[0].trim();
@@ -488,6 +795,7 @@
                             }
 
                             //layer.bindPopup(feature.properties.descr);
+
 
                             layer.on('click', function () {
                                 // Adiciona o elemento clicado à camada de destaque
